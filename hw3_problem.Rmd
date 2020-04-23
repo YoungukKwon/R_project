@@ -1,0 +1,144 @@
+---
+title: "Applied Statistics HW3-6"
+author: "Kwon Young Wook 2020-26739"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Problem 7.55
+### (a) Find beta and s^2 (using SVD or LU decomposition)
+```{r message=FALSE, warning=FALSE}
+## data loading
+library(alr4)
+data(landrent)
+
+landrent <- landrent[, -4]
+fit <- lm(Y ~ ., data=landrent)
+Y <- landrent$Y
+X <- model.matrix(fit)
+n <- nrow(X)
+k <- ncol(X)-1
+
+## estimation of beta
+beta <- solve(t(X) %*% X) %*% t(X) %*% Y   # regression coefficient
+beta 
+# using Singular value decomposition
+# From X=UDV', beta = (X'X)^-1X'y = D^-1U'y
+U <- svd(X)$u
+D <- diag(svd(X)$d)
+V <- svd(X)$v
+
+V %*% solve(D) %*% t(U) %*% Y   # regression coefficient
+
+## # SSE and s^2
+SSE <- sum((Y-fit$fitted.values)^2)
+s_square <- SSE/(n-k-1)
+s_square   # s^2
+# using SVD
+# SSE = y'(I-X(X'X)X')y = y'(I-UU')y 
+t(Y) %*% (diag(1,n)-U%*%t(U)) %*% Y /(n-k-1)   # s^2
+```
+
+### (b) Find beta_1 and beta_0 using Sxx and Syx 
+```{r }
+## beta_1 and beta_0
+J_n <- matrix(1, ncol=n, nrow=n)
+Sxx <- cov(X[,-1])/(n-1)
+Sxy <- cov(X[,-1], Y)/(n-1)
+beta_1 <- solve(Sxx)%*%Sxy
+Xbar <- colMeans(X[,-1])
+beta_0 <- mean(Y)-t(Sxy)%*%solve(Sxx)%*%Xbar
+c(beta_0, beta_1)   
+```
+
+### (c) Find R^2 and adjusted R^2
+```{r }
+## R^2 and adjusted R^2
+SST <- sum((Y-mean(Y))^2)
+R_square <- 1 - SSE/SST
+adjusted_R_square <- ((n-1)*R_square-3)/(n-k-1)
+R_square; adjusted_R_square   
+```
+
+
+## Problem 8.38
+### (a) Test H0: beta_1 = 0
+```{r }
+summary(fit)
+SSR <- sum((fit$fitted.values-mean(Y))^2)
+F <- (SSR/k)/(SSE/(n-k-1))
+F # F statistic
+1 - pf(F, k, n-k-1)   # p-value
+```
+
+### (b) Test H0: beta_j = 0 for j = 1,2,3. Use t(0.05/2) for eahch test and use a Bonferroni approach based on t(0.05/6)
+```{r}
+## H0: beta_1 = 0
+S <- solve(t(X)%*%X)
+g_11 <- S[2,2]
+t_1 <- beta[2]/sqrt(SSE/(n-k-1))/sqrt(g_11)
+t_1 # t statistic
+
+abs(t_1) >= qt(0.975, n-k-1)   # TRUE. we can reject H0
+
+## H0: beta_2 = 0
+g_22 <- S[3,3]
+t_2 <- beta[3]/sqrt(SSE/(n-k-1))/sqrt(g_22)
+t_2  
+
+abs(t_2) >= qt(0.975, n-k-1)   # TRUE. we can reject H0
+
+## H0: beta_3 = 0
+g_33 <- S[4,4]
+t_3 <- beta[4]/sqrt(SSE/(n-k-1))/sqrt(g_33)
+t_3
+
+abs(t_3) >= qt(0.975, n-k-1)   # FALSE. we cannot reject H0
+
+## Use a Bonferroni approach
+abs(t_1) >= qt((1-0.05/6), n-k-1)  # reject H0
+abs(t_2) >= qt((1-0.05/6), n-k-1)  # reject H0
+abs(t_3) >= qt((1-0.05/6), n-k-1)  # not reject H0
+
+```
+
+### (c) Find confidence intervals for beta_1, beta_2, and beta_3
+```{r }
+## Confidence intervals(CI) 
+MSE <- SSE/(n-k-1)
+lower <- vector(mode="numeric", length=3)
+upper <- vector(mode="numeric", length=3)
+lower_bf <- vector(mode="numeric", length=3)
+upper_bf <- vector(mode="numeric", length=3)
+for (i in 1:3) {
+  lower[i]=beta[i+1]-qt(0.975,n-k-1)*sqrt(S[i+1,i+1]*MSE)
+  upper[i]=beta[i+1]+qt(0.975,n-k-1)*sqrt(S[i+1,i+1]*MSE)
+  lower_bf[i]=beta[i+1]-qt(1-0.05/6,n-k-1)*sqrt(S[i+1,i+1]*MSE)
+  upper_bf[i]=beta[i+1]+qt(1-0.05/6,n-k-1)*sqrt(S[i+1,i+1]*MSE)
+}
+
+CI_data_frame <- data.frame(lower, upper, lower_bf, upper_bf)
+rownames(CI_data_frame) <- c("beta_1", "beta_2", "beta_3")
+CI_data_frame   # CI and Bonferroni CI
+```
+
+### (d) Find 95% CI for E(y0)=x0'beta where x0'=(1,15,30,0.5)
+```{r}
+## CI for E(y)=x0'beta
+x0 <- c(1, 15, 30, 0.5)
+c(t(x0)%*%beta - qt(0.975,n-k-1)*sqrt(MSE)*sqrt(t(x0)%*%S%*%x0),
+  t(x0)%*%beta + qt(0.975,n-k-1)*sqrt(MSE)*sqrt(t(x0)%*%S%*%x0))
+
+```
+
+### (e) Find 95% prediction interval(PI) for y0 where x0'=(1,15,30,0.5)
+```{r}
+c(t(x0)%*%beta - qt(0.975,n-k-1)*sqrt(MSE)*sqrt(1+t(x0)%*%S%*%x0),
+  t(x0)%*%beta + qt(0.975,n-k-1)*sqrt(MSE)*sqrt(1+t(x0)%*%S%*%x0))
+
+```
